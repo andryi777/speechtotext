@@ -1,0 +1,24 @@
+# Entorno virtual
+venv/
+
+# Archivos de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de configuración de entorno
+.env
+
+# Archivos de audio y transcripción
+uploads/*
+!uploads/.gitkeep
+
+# Archivos temporales
+*.tmp
+*.log
+*.bak
+
+# Archivos de usuario
+.DS_Store
+Thumbs.db 

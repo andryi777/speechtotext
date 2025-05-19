@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcriptor de Audio</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin-top: 2rem;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            padding: 1rem;
+        }
+        .upload-area {
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            background-color: #f0f7ff;
+        }
+        .transcription-area {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .segment {
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        .speaker-1 {
+            border-left: 4px solid #007bff;
+        }
+        .speaker-2 {
+            border-left: 4px solid #28a745;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        .loading i {
+            font-size: 2rem;
+            color: #007bff;
+        }
+        .btn-export {
+            margin-top: 1rem;
+        }
+        #file-name {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        .segment[contenteditable="true"]:focus, .segment p[contenteditable="true"]:focus {
+            outline: 2px solid #007bff;
+            background-color: #e3f2fd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-microphone-alt me-2"></i>Transcriptor de Audio</h2>
+            </div>
+            <div class="card-body">
+                <div class="upload-area" id="drop-zone">
+                    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-primary"></i>
+                    <h4>Arrastra y suelta tu archivo de audio aquí</h4>
+                    <p class="text-muted">o</p>
+                    <input type="file" id="file-input" accept="audio/*" style="display: none;">
+                    <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+                        Seleccionar archivo
+                    </button>
+                    <div id="file-name"></div>
+                </div>
+
+                <div class="loading" id="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p class="mt-2">Procesando audio...</p>
+                </div>
+
+                <div id="audio-player-container" style="display:none; margin-bottom: 1rem;">
+                    <audio id="audio-player" controls style="width:100%"></audio>
+                </div>
+
+                <div id="transcription-actions" style="margin-bottom: 1.5rem; display: none; gap: 1rem;">
+                    <button class="btn btn-success btn-export" onclick="exportTranscription()">
+                        <i class="fas fa-download me-2"></i>Exportar Transcripción
+                    </button>
+                    <button class="btn btn-primary btn-export" onclick="saveTranscription()">
+                        <i class="fas fa-save me-2"></i>Guardar en servidor
+                    </button>
+                </div>
+                <div id="save-notification" class="alert alert-success" style="display:none;" role="alert">
+                    ¡Transcripción guardada correctamente!
+                </div>
+                <div class="transcription-area" id="transcription" style="display: none;">
+                    <h4 class="mb-3">Transcripción</h4>
+                    <div id="segments"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileName = document.getElementById('file-name');
+        const loading = document.getElementById('loading');
+        const transcription = document.getElementById('transcription');
+        const segments = document.getElementById('segments');
+
+        // Prevenir el comportamiento por defecto del navegador
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Efectos visuales durante el drag & drop
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('bg-light');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('bg-light');
+        }
+
+        // Manejar el drop de archivos
+        dropZone.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFileSelect, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type.startsWith('audio/')) {
+                    // Verificar tamaño del archivo (100MB)
+                    if (file.size > 100 * 1024 * 1024) {
+                        alert('El archivo es demasiado grande. El tamaño máximo permitido es 100MB.');
+                        return;
+                    }
+                    fileName.textContent = `Archivo seleccionado: ${file.name}`;
+                    uploadFile(file);
+                } else {
+                    alert('Por favor, selecciona un archivo de audio válido.');
+                }
+            }
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('audio', file);
+
+            loading.style.display = 'block';
+            transcription.style.display = 'none';
+            segments.innerHTML = '';
+
+            fetch('/transcribe', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 413) {
+                        throw new Error('El archivo es demasiado grande. El tamaño máximo permitido es 100MB.');
+                    }
+                    return response.text().then(text => {
+                        try {
+                            const data = JSON.parse(text);
+                            throw new Error(data.error || 'Error al procesar el archivo');
+                        } catch (e) {
+                            throw new Error('Error al procesar el archivo');
+                        }
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                loading.style.display = 'none';
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    document.getElementById('transcription-actions').style.display = 'none';
+                } else {
+                    displayTranscription(data.segments, data.audio_url);
+                }
+            })
+            .catch(error => {
+                loading.style.display = 'none';
+                alert(error.message || 'Error al procesar el archivo');
+                document.getElementById('transcription-actions').style.display = 'none';
+            });
+        }
+
+        function displayTranscription(segmentsData, audioUrl) {
+            transcription.style.display = 'block';
+            segments.innerHTML = '';
+            document.getElementById('transcription-actions').style.display = 'flex';
+
+            // Mostrar el reproductor de audio
+            const audioPlayerContainer = document.getElementById('audio-player-container');
+            const audioPlayer = document.getElementById('audio-player');
+            audioPlayerContainer.style.display = 'block';
+            audioPlayer.src = audioUrl;
+
+            // Renderizar los segmentos
+            segmentsData.forEach((segment, idx) => {
+                const speakerClass = segment.speaker === 'Hablante 1' ? 'speaker-1' : 'speaker-2';
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = `segment ${speakerClass}`;
+                segmentDiv.setAttribute('data-start', segment.start_seconds);
+                segmentDiv.setAttribute('data-end', segment.end_seconds);
+                segmentDiv.setAttribute('data-idx', idx);
+                segmentDiv.style.cursor = 'pointer';
+                segmentDiv.innerHTML = `
+                    <div class=\"d-flex justify-content-between align-items-center mb-2\">
+                        <strong>${segment.speaker}</strong>
+                        <span class=\"timestamp\">${segment.start} - ${segment.end}</span>
+                    </div>
+                    <p class=\"mb-0\" contenteditable=\"true\">${segment.text}</p>
+                `;
+                segmentDiv.onclick = function() {
+                    audioPlayer.currentTime = segment.start_seconds;
+                    audioPlayer.play();
+                };
+                segments.appendChild(segmentDiv);
+            });
+
+            // Sincronizar sombreado
+            audioPlayer.ontimeupdate = function() {
+                const currentTime = audioPlayer.currentTime;
+                const allSegments = document.querySelectorAll('.segment');
+                allSegments.forEach(seg => {
+                    const start = parseFloat(seg.getAttribute('data-start'));
+                    const end = parseFloat(seg.getAttribute('data-end'));
+                    if (currentTime >= start && currentTime <= end) {
+                        seg.style.backgroundColor = '#ffe082'; // Amarillo claro
+                    } else {
+                        seg.style.backgroundColor = '#fff';
+                    }
+                });
+            };
+        }
+
+        function exportTranscription() {
+            const segments = Array.from(document.querySelectorAll('.segment')).map(segment => {
+                const speaker = segment.querySelector('strong').textContent;
+                const timestamp = segment.querySelector('.timestamp').textContent;
+                // Tomar el texto editado
+                const text = segment.querySelector('p').textContent;
+                return `${speaker} (${timestamp}): ${text}`;
+            });
+
+            const text = segments.join('\n\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'transcripcion.txt';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function saveTranscription() {
+            const segmentsArr = Array.from(document.querySelectorAll('.segment')).map(segment => {
+                const speaker = segment.querySelector('strong').textContent;
+                const timestamp = segment.querySelector('span.timestamp').textContent;
+                const text = segment.querySelector('p').textContent;
+                return { speaker, timestamp, text };
+            });
+            const audioPlayer = document.getElementById('audio-player');
+            const audioUrl = audioPlayer.src;
+            const filename = audioUrl.split('/').pop().split('.')[0];
+            fetch('/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename, transcription: segmentsArr })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showSaveNotification();
+                } else {
+                    alert(data.error || 'Error al guardar la transcripción');
+                }
+            })
+            .catch(() => alert('Error al guardar la transcripción'));
+        }
+
+        function showSaveNotification() {
+            const notif = document.getElementById('save-notification');
+            notif.style.display = 'block';
+            setTimeout(() => {
+                notif.style.display = 'none';
+            }, 2500);
+        }
+    </script>
+</body>
+</html> 

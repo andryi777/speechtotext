@@ -1,0 +1,7 @@
+flask
+openai-whisper
+torch
+numpy
+ffmpeg-python
+python-dotenv
+Werkzeug 
